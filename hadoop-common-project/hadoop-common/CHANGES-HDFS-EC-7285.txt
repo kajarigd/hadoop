@@ -45,4 +45,4 @@
 
     HADOOP-11841. Remove unused ecschema-def.xml files.  (szetszwo)
 
-    HADOOP-11920 Enhance tests for erasure coders. (Kai Zheng)
+    HADOOP-11921 Enhance tests for erasure coders. (Kai Zheng)
