@@ -1,0 +1,94 @@
+Index: hadoop-hdfs-project/hadoop-hdfs/src/main/docs/src/documentation/content/xdocs/hdfs_design.xml
+===================================================================
+--- hadoop-hdfs-project/hadoop-hdfs/src/main/docs/src/documentation/content/xdocs/hdfs_design.xml	(revision 1229586)
++++ hadoop-hdfs-project/hadoop-hdfs/src/main/docs/src/documentation/content/xdocs/hdfs_design.xml	(working copy)
+@@ -486,20 +486,25 @@
+         <title> File Deletes and Undeletes </title>
+         <p>
+         When a file is deleted by a user or an application, it is not immediately removed from HDFS.  Instead, 
+-        HDFS first renames it to a file in the <code>/trash</code> directory. The file can be restored quickly 
+-        as long as it remains in <code>/trash</code>. A file remains in <code>/trash</code> for a configurable 
+-        amount of time. After the expiry of its life in <code>/trash</code>, the NameNode deletes the file from 
++        HDFS first renames it to a file in the <code>/user/X/.Trash</code> subdirectory. The file can be restored quickly 
++        as long as it remains in <code>/user/X/.Trash</code>. A file remains in <code>/user/X/.Trash</code> for a configurable 
++        amount of time. After the expiry of its life in <code>/user/X/.Trash</code>, the NameNode deletes the file from 
+         the HDFS namespace. The deletion of a file causes the blocks associated with the file to be freed. 
+         Note that there could be an appreciable time delay between the time a file is deleted by a user and 
+         the time of the corresponding increase in free space in HDFS.
+         </p>
+	 <p>
+-        A user can Undelete a file after deleting it as long as it remains in the <code>/trash</code> directory. 
+-        If a user wants to undelete a file that he/she has deleted, he/she can navigate the <code>/trash</code> 
+-        directory and retrieve the file. The <code>/trash</code> directory contains only the latest copy of the file 
+-        that was deleted. The <code>/trash</code> directory is just like any other directory with one special 
++        A user can Undelete a file after deleting it as long as it remains in the <code>/user/X/.Trash</code> directory. 
++        If a user wants to undelete a file that he/she has deleted, he/she can navigate the <code>/user/X/.Trash</code> 
++        directory and retrieve the file. The <code>/user/X/.Trash</code> directory contains only the latest copy of the file 
++        that was deleted. The <code>/user/X/.Trash</code> directory is just like any other directory with one special 
+         feature: HDFS applies specified policies to automatically delete files from this directory.
+-        By default, the trash feature is disabled. It can be enabled by setting the <em>fs.trash.interval</em> property in core-site.xml to a non-zero value (set as minutes of retention required). The property needs to exist on both client and server side configurations.
++        By default, the trash feature is enabled. It creates a new snapshot every 6 hours (configured via fs.trash.checkpoint.interval)
++	and data is retained for 24 hours (configured via fs.trash.interval).
++	</p>
++	<p>
++	Files under <code>/user/X/.Trash</code> are counted towards total space used by the parent directories. In the case that
++	quotas are enabled for the parent directories, delete operations may fail due to quota violations.
+         </p>
+       </section>
+ 
+Index: hadoop-common-project/hadoop-common/src/main/resources/core-default.xml
+===================================================================
+--- hadoop-common-project/hadoop-common/src/main/resources/core-default.xml	(revision 1229586)
++++ hadoop-common-project/hadoop-common/src/main/resources/core-default.xml	(working copy)
+@@ -218,7 +218,7 @@
+ 
+ <property>
+   <name>fs.trash.interval</name>
+-  <value>0</value>
++  <value>1440</value>
+   <description>Number of minutes after which the checkpoint
+   gets deleted.
+   If zero, the trash feature is disabled.
+@@ -227,7 +227,7 @@
+ 
+ <property>
+   <name>fs.trash.checkpoint.interval</name>
+-  <value>0</value>
++  <value>360</value>
+   <description>Number of minutes between trash checkpoints.
+   Should be smaller or equal to fs.trash.interval.
+   Every time the checkpointer runs it creates a new checkpoint 
+
+
+Following is an example which will show how the files are deleted from HDFS.
+We created 2 files (test1 & test2) under the directory delete
+
+$ hadoop fs -mkdir -p delete/test1
+$ hadoop fs -mkdir -p delete/test2
+$ hadoop fs -ls delete/
+Found 2 items
+drwxr-xr-x   - hadoop hadoop          0 2015-05-08 12:39 delete/test1
+drwxr-xr-x   - hadoop hadoop          0 2015-05-08 12:40 delete/test2 
+
+We are going to remove the file test1.The comment below shows that the file has been moved to Trash directory and it will be deleted after a period of 1440 mins which is the time set up in core-site.xml  file.
+
+$ hadoop fs -rm -r delete/test1
+
+15/05/08 12:40:43 INFO fs.TrashPolicyDefault: Namenode trash configuration: Deletion interval = 1440 minutes, Emptier interval = 0 minutes.
+Moved: 'hdfs://localhost:8020/user/hadoop/delete/test1' to trash at: hdfs://localhost:8020/user/hadoop/.Trash/Current
+
+now we are going to remove the file with skipTrash option , which will not send the file to Trash.It will be completely removed from HDFS.
+
+$ hadoop fs -rm -r -skipTrash delete/test2
+Deleted delete/test2
+
+ We can see now that the Trash directory contains only file test1 
+$ hadoop fs -ls .Trash/Current/user/hadoop/delete/
+Found 1 items\
+drwxr-xr-x   - hadoop hadoop          0 2015-05-08 12:39 .Trash/Current/user/hadoop/delete/test1
+
+so file test1 goes to Trash  and file test2 is deleted permanently
+
+ The below command will empty the Trash folder and all the files in .Trash folder will be deleted.
+$ hadoop fs -expunge
+
